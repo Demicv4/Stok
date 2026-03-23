@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Stok Sayım</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f1117;--surface:#181c27;--surface2:#1e2333;--border:#2a3048;
+  --accent:#4ade80;--warn:#fbbf24;--danger:#f87171;--info:#60a5fa;--purple:#a78bfa;
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#475569;
+  --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;display:flex;flex-direction:column;}
+
+.header{display:flex;align-items:center;justify-content:space-between;padding:13px 24px;border-bottom:1px solid var(--border);background:var(--surface);}
+.header-left{display:flex;align-items:center;gap:12px;}
+.logo-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
+.header h1{font-family:var(--mono);font-size:15px;font-weight:600;letter-spacing:.05em;}
+.header-right{display:flex;align-items:center;gap:10px;}
+.header-badge{font-family:var(--mono);font-size:11px;color:var(--text3);background:var(--surface2);border:1px solid var(--border);padding:4px 10px;border-radius:4px;}
+
+.layout{display:grid;grid-template-columns:340px 1fr;flex:1;overflow:hidden;height:calc(100vh - 51px);}
+
+/* MOBİLDE tek sütun */
+@media(max-width:700px){
+  .layout{grid-template-columns:1fr;height:auto;overflow:visible;}
+  .right-panel{min-height:50vh;}
+  body{overflow-y:auto;}
+}
+
+.left-panel{border-right:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;overflow:hidden;}
+@media(max-width:700px){.left-panel{border-right:none;border-bottom:1px solid var(--border);overflow:visible;}}
+
+.panel-section{padding:14px 16px;border-bottom:1px solid var(--border);}
+.section-label{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;}
+
+/* BARKOD ALANI */
+.scan-row{display:flex;gap:8px;align-items:center;}
+.scan-area{position:relative;flex:1;}
+.scan-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:14px;padding:10px 14px;outline:none;transition:border-color .15s;}
+.scan-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(74,222,128,.1);}
+.scan-input::placeholder{color:var(--text3);}
+
+/* KAMERA BUTONU */
+.cam-btn{width:42px;height:42px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s,border-color .15s;}
+.cam-btn:hover{background:var(--border);}
+.cam-btn.active{border-color:var(--accent);background:rgba(74,222,128,.1);}
+.cam-btn svg{width:20px;height:20px;stroke:var(--text2);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.cam-btn.active svg{stroke:var(--accent);}
+
+/* KAMERA GÖRÜNTÜSÜ */
+.camera-container{position:relative;width:100%;background:#000;border-radius:6px;overflow:hidden;margin-top:10px;display:none;}
+.camera-container.open{display:block;}
+.camera-video{width:100%;display:block;max-height:220px;object-fit:cover;}
+.camera-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;}
+.scan-frame{width:200px;height:120px;border:2px solid var(--accent);border-radius:4px;box-shadow:0 0 0 9999px rgba(0,0,0,.45);}
+.scan-line{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:196px;height:2px;background:var(--accent);opacity:.8;animation:scanAnim 2s ease-in-out infinite;}
+.camera-status{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-family:var(--mono);font-size:11px;color:#fff;opacity:.7;}
+.cam-close{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);border:none;border-radius:4px;color:#fff;font-size:14px;padding:4px 8px;cursor:pointer;}
+
+@keyframes scanAnim{0%,100%{opacity:.4;top:35%;}50%{opacity:1;top:65%;}}
+
+/* PARSED FIELDS */
+.parsed-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;}
+.parsed-field{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:7px 10px;}
+.parsed-field.full{grid-column:1/-1;}
+.pf-label{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px;}
+.pf-value{font-family:var(--mono);font-size:12px;color:var(--text);font-weight:500;min-height:16px;word-break:break-all;}
+.pf-value.accent{color:var(--accent);}
+.pf-value.purple{color:var(--purple);}
+.pf-value.warn{color:var(--warn);}
+.pf-value.info{color:var(--info);}
+.pf-value.empty{color:var(--text3);font-weight:400;font-size:11px;}
+.type-badge{display:inline-block;font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:3px;margin-bottom:6px;}
+.type-badge.medikal{background:rgba(167,139,250,.15);color:var(--purple);border:1px solid rgba(167,139,250,.3);}
+.type-badge.normal{background:rgba(74,222,128,.1);color:var(--accent);border:1px solid rgba(74,222,128,.2);}
+
+/* ADET */
+.qty-row{display:flex;gap:8px;align-items:center;}
+.qty-input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:18px;font-weight:600;padding:9px;outline:none;text-align:center;transition:border-color .15s;}
+.qty-input:focus{border-color:var(--accent);}
+.qty-btn{width:38px;height:38px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;flex-shrink:0;}
+.qty-btn:hover{background:var(--border);}
+.add-btn{width:100%;background:var(--accent);color:#0a1a0f;border:none;border-radius:6px;font-family:var(--sans);font-size:14px;font-weight:600;padding:10px;cursor:pointer;margin-top:8px;transition:opacity .15s,transform .1s;}
+.add-btn:hover{opacity:.9;}.add-btn:active{transform:scale(.98);}.add-btn:disabled{opacity:.3;cursor:not-allowed;transform:none;}
+
+/* VERİTABANI */
+.db-section{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+.db-toolbar{display:flex;gap:6px;padding:10px 16px 0;}
+.db-tool-btn{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text2);font-size:11px;padding:6px 8px;cursor:pointer;transition:background .15s,color .15s;font-family:var(--sans);text-align:center;white-space:nowrap;}
+.db-tool-btn:hover{background:var(--border);color:var(--text);}
+.db-tool-btn.accent{border-color:rgba(96,165,250,.4);color:var(--info);}
+.db-tool-btn.accent:hover{background:rgba(96,165,250,.1);}
+.db-list{flex:1;overflow-y:auto;}
+.db-item{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid var(--border);font-size:13px;transition:background .1s;}
+.db-item:hover{background:var(--surface2);}
+.db-item-name{color:var(--text);font-weight:500;}
+.db-item-barcode{font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:1px;}
+.db-item-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:4px 6px;border-radius:4px;}
+.db-item-del:hover{color:var(--danger);background:rgba(248,113,113,.1);}
+.db-empty{padding:20px 16px;text-align:center;font-size:12px;color:var(--text3);line-height:1.8;}
+.add-product-form{padding:12px 16px;border-top:1px solid var(--border);background:var(--surface);}
+.form-row{display:flex;gap:6px;margin-bottom:6px;}
+.form-row:last-child{margin-bottom:0;}
+.mini-input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--sans);font-size:12px;padding:7px 10px;outline:none;transition:border-color .15s;}
+.mini-input:focus{border-color:var(--accent);}
+.mini-input::placeholder{color:var(--text3);}
+
+/* SAĞ PANEL */
+.right-panel{display:flex;flex-direction:column;overflow:hidden;}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;}
+.table-title{font-family:var(--mono);font-size:13px;color:var(--text2);}
+.table-actions{display:flex;gap:8px;}
+.tbl-btn{background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text2);font-size:12px;padding:5px 11px;cursor:pointer;transition:background .15s,color .15s;font-family:var(--sans);}
+.tbl-btn:hover{background:var(--border);color:var(--text);}
+.tbl-btn.danger:hover{background:rgba(248,113,113,.15);color:var(--danger);border-color:rgba(248,113,113,.3);}
+.table-wrap{flex:1;overflow-y:auto;}
+table{width:100%;border-collapse:collapse;}
+thead{position:sticky;top:0;background:var(--surface2);z-index:1;}
+th{font-family:var(--mono);font-size:9px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s;}
+tbody tr:hover{background:var(--surface2);}
+tbody tr.new-row{animation:rowIn .3s ease;}
+td{padding:9px 12px;font-size:12px;vertical-align:middle;}
+.td-index{font-family:var(--mono);color:var(--text3);font-size:10px;}
+.td-name{font-weight:500;color:var(--text);max-width:160px;}
+.td-barcode{font-family:var(--mono);font-size:11px;color:var(--text3);}
+.td-lot{font-family:var(--mono);font-size:11px;color:var(--purple);}
+.td-seri{font-family:var(--mono);font-size:11px;color:var(--info);}
+.td-exp{font-family:var(--mono);font-size:11px;color:var(--warn);}
+.td-qty{text-align:right;font-family:var(--mono);font-size:14px;font-weight:600;color:var(--accent);}
+.td-empty{color:var(--text3);font-size:10px;}
+.td-action{text-align:right;}
+.row-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:3px 6px;border-radius:4px;}
+.row-del:hover{color:var(--danger);background:rgba(248,113,113,.1);}
+.medikal-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--purple);margin-right:5px;vertical-align:middle;}
+.table-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;color:var(--text3);font-size:13px;gap:8px;}
+.table-empty-icon{font-size:32px;opacity:.3;}
+.table-footer{padding:10px 20px;border-top:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:8px;}
+.summary{display:flex;gap:24px;}
+.sum-item{display:flex;flex-direction:column;gap:1px;}
+.sum-label{font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;}
+.sum-val{font-family:var(--mono);font-size:17px;font-weight:600;color:var(--text);}
+.legend{display:flex;gap:12px;align-items:center;}
+.legend-item{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);}
+.legend-dot{width:8px;height:8px;border-radius:50%;}
+
+/* MODALLER */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .2s;padding:16px;}
+.modal-bg.show{opacity:1;pointer-events:all;}
+.modal{border-radius:10px;padding:22px;transform:scale(.95);transition:transform .2s;max-height:90vh;overflow-y:auto;width:100%;}
+.modal-bg.show .modal{transform:scale(1);}
+.modal-icon{font-size:24px;margin-bottom:8px;}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:6px;}
+.modal-desc{font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:12px;}
+.modal-btns{display:flex;gap:8px;margin-top:14px;}
+.modal-btn{flex:1;padding:10px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:opacity .15s;font-family:var(--sans);}
+.modal-btn:hover{opacity:.85;}
+.modal-btn.cancel{background:var(--surface2);color:var(--text2);border:1px solid var(--border);}
+
+#new-product-modal .modal{background:var(--surface);border:1px solid var(--info);box-shadow:0 0 36px rgba(96,165,250,.1);max-width:420px;}
+#new-product-modal .modal-title{color:var(--info);}
+.np-field{margin-bottom:9px;}
+.np-label{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;}
+.np-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--sans);font-size:13px;padding:8px 11px;outline:none;transition:border-color .15s;}
+.np-input:focus{border-color:var(--info);}
+.np-input::placeholder{color:var(--text3);}
+#new-product-modal .modal-btn.confirm{background:var(--info);color:#03111f;}
+.np-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.np-divider{border:none;border-top:1px solid var(--border);margin:10px 0;}
+.np-section-title{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;}
+
+#merge-modal .modal{background:var(--surface);border:1px solid var(--warn);box-shadow:0 0 36px rgba(251,191,36,.1);max-width:380px;}
+#merge-modal .modal-title{color:var(--warn);}
+#merge-modal .modal-btn.confirm{background:var(--warn);color:#1c1107;}
+.merge-qty-input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:20px;font-weight:600;padding:10px;text-align:center;outline:none;}
+.merge-qty-input:focus{border-color:var(--warn);}
+
+#import-modal .modal{background:var(--surface);border:1px solid var(--accent);box-shadow:0 0 36px rgba(74,222,128,.08);max-width:500px;}
+#import-modal .modal-title{color:var(--accent);}
+.drop-zone{border:2px dashed var(--border);border-radius:8px;padding:24px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;margin-bottom:10px;}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--accent);background:rgba(74,222,128,.04);}
+.drop-zone-icon{font-size:26px;margin-bottom:6px;opacity:.5;}
+.drop-zone-text{font-size:13px;color:var(--text3);}
+.drop-zone-sub{font-size:11px;color:var(--text3);margin-top:3px;font-family:var(--mono);}
+#import-file{display:none;}
+.import-preview{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 11px;margin-bottom:8px;font-family:var(--mono);font-size:11px;color:var(--text2);max-height:110px;overflow-y:auto;display:none;}
+.import-preview-row{padding:2px 0;border-bottom:1px solid var(--border);}
+.import-preview-row:last-child{border:none;}
+.format-hint{background:var(--surface2);border-radius:6px;padding:9px 11px;font-size:12px;color:var(--text3);margin-bottom:10px;line-height:1.8;}
+.format-hint code{font-family:var(--mono);color:var(--text2);}
+#import-modal .modal-btn.confirm{background:var(--accent);color:#0a1a0f;}
+.import-result{font-size:13px;color:var(--text2);text-align:center;min-height:18px;}
+
+.toast{position:fixed;bottom:20px;right:20px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--text);transform:translateY(16px);opacity:0;transition:all .25s;z-index:200;max-width:320px;}
+.toast.show{transform:translateY(0);opacity:1;}
+.toast.success{border-color:var(--accent);}
+.toast.warning{border-color:var(--warn);}
+
+/* HTTPS uyarı bandı */
+.https-warn{background:rgba(251,191,36,.1);border-bottom:1px solid rgba(251,191,36,.3);padding:8px 24px;font-size:12px;color:var(--warn);display:none;align-items:center;gap:8px;}
+.https-warn.show{display:flex;}
+
+@keyframes rowIn{from{opacity:0;transform:translateX(-6px);}to{opacity:1;transform:translateX(0);}}
+::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+</style>
+</head>
+<body>
+
+<!-- HTTPS uyarısı (sadece kamera açılmaya çalışılınca gösterilir) -->
+<div class="https-warn" id="https-warn">
+  <span>⚠</span>
+  <span>Kamera özelliği için HTTPS gereklidir. Dosyayı Netlify gibi bir hosting'e yükleyin.</span>
+  <a href="https://app.netlify.com/drop" target="_blank" style="color:var(--warn);margin-left:auto;font-weight:600;white-space:nowrap;">Netlify'a yükle →</a>
+</div>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo-dot"></div>
+    <h1>STOK SAYIM</h1>
+  </div>
+  <div class="header-right">
+    <div class="header-badge" id="tarih-badge"></div>
+    <!-- Cihaz göstergesi -->
+    <div class="header-badge" id="device-badge" style="color:var(--accent);border-color:rgba(74,222,128,.3);">📱 Telefon</div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="left-panel">
+    <div class="panel-section">
+      <div class="section-label">Barkod / Karekod Okut</div>
+
+      <!-- Barkod input + kamera butonu yan yana -->
+      <div class="scan-row">
+        <div class="scan-area">
+          <input class="scan-input" id="barkod-input" type="text" placeholder="Barkod okutun veya yazın..." autocomplete="off">
+        </div>
+        <!-- Kamera butonu: sadece destekleniyorsa göster -->
+        <button class="cam-btn" id="cam-btn" onclick="toggleCamera()" title="Kamera ile tara" style="display:none;">
+          <svg viewBox="0 0 24 24">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Kamera görüntüsü -->
+      <div class="camera-container" id="camera-container">
+        <video class="camera-video" id="camera-video" autoplay playsinline muted></video>
+        <div class="camera-overlay">
+          <div class="scan-frame"></div>
+          <div class="scan-line"></div>
+        </div>
+        <div class="camera-status" id="camera-status">Barkod veya karekod arayın...</div>
+        <button class="cam-close" onclick="stopCamera()">✕ Kapat</button>
+      </div>
+
+      <!-- Ayrıştırılmış alanlar -->
+      <div class="parsed-grid" id="parsed-grid">
+        <div class="parsed-field full">
+          <div class="pf-label">Ürün / GTIN</div>
+          <div class="pf-value accent empty" id="pf-name">—</div>
+        </div>
+        <div class="parsed-field full">
+          <div class="pf-label">Barkod No</div>
+          <div class="pf-value empty" id="pf-barcode">—</div>
+        </div>
+        <div class="parsed-field full">
+          <div class="pf-label">Lot / Parti No <span style="color:var(--text3);font-size:9px;">(AI 10)</span></div>
+          <div class="pf-value purple empty" id="pf-lot">—</div>
+        </div>
+        <div class="parsed-field">
+          <div class="pf-label">Seri No <span style="color:var(--text3);font-size:9px;">(AI 21)</span></div>
+          <div class="pf-value info empty" id="pf-seri">—</div>
+        </div>
+        <div class="parsed-field">
+          <div class="pf-label">SKT <span style="color:var(--text3);font-size:9px;">(AI 17)</span></div>
+          <div class="pf-value warn empty" id="pf-exp">—</div>
+        </div>
+        <div class="parsed-field">
+          <div class="pf-label">Üretim Tarihi <span style="color:var(--text3);font-size:9px;">(AI 11)</span></div>
+          <div class="pf-value empty" id="pf-prod">—</div>
+        </div>
+        <div class="parsed-field">
+          <div class="pf-label">Tür</div>
+          <div id="pf-type"><span class="type-badge normal">Standart barkod</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-label">Adet</div>
+      <div class="qty-row">
+        <button class="qty-btn" onclick="changeQty(-1)">−</button>
+        <input class="qty-input" id="qty-input" type="number" value="1" min="1">
+        <button class="qty-btn" onclick="changeQty(1)">+</button>
+      </div>
+      <button class="add-btn" id="add-btn" onclick="addToList()" disabled>Listeye Ekle</button>
+    </div>
+
+    <div class="db-section">
+      <div class="panel-section" style="padding-bottom:6px;"><div class="section-label">Ürün Veritabanı</div></div>
+      <div class="db-toolbar">
+        <button class="db-tool-btn accent" onclick="openImportModal()">⬆ Excel / CSV İçe Aktar</button>
+        <button class="db-tool-btn" onclick="exportDB()">⬇ Dışa Aktar</button>
+      </div>
+      <div class="db-list" id="db-list"></div>
+      <div class="add-product-form">
+        <div class="section-label" style="margin-bottom:8px;">Manuel Ürün Ekle</div>
+        <div class="form-row"><input class="mini-input" id="new-barcode" type="text" placeholder="Barkod / GTIN"></div>
+        <div class="form-row"><input class="mini-input" id="new-name" type="text" placeholder="Ürün adı"></div>
+        <div class="form-row">
+          <input class="mini-input" type="button" value="Ekle" onclick="addProduct()" style="cursor:pointer;background:var(--surface2);color:var(--accent);font-weight:600;">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="table-header">
+      <span class="table-title">Sayım Listesi</span>
+      <div class="table-actions">
+        <button class="tbl-btn" onclick="exportCSV()">CSV İndir</button>
+        <button class="tbl-btn danger" onclick="clearList()">Temizle</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Ürün Adı</th>
+            <th>Barkod / GTIN</th>
+            <th style="color:var(--purple)">Lot / Parti</th>
+            <th style="color:var(--info)">Seri No</th>
+            <th style="color:var(--warn)">SKT</th>
+            <th style="text-align:right">Adet</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="sayim-tbody"></tbody>
+      </table>
+      <div class="table-empty" id="table-empty">
+        <div class="table-empty-icon">📦</div>
+        <span>Henüz ürün eklenmedi</span>
+        <span style="font-size:11px;">Barkod okutun veya kamerayı kullanın</span>
+      </div>
+    </div>
+    <div class="table-footer">
+      <div class="summary">
+        <div class="sum-item"><span class="sum-label">Toplam Kalem</span><span class="sum-val" id="sum-kalem">0</span></div>
+        <div class="sum-item"><span class="sum-label">Toplam Adet</span><span class="sum-val" id="sum-adet">0</span></div>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div>Medikal (lot'lu)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Standart</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BİLİNMEYEN BARKOD MODALI -->
+<div class="modal-bg" id="new-product-modal">
+  <div class="modal">
+    <div class="modal-icon">🔍</div>
+    <div class="modal-title">Barkod Tanınmadı — Yeni Ürün</div>
+    <div class="modal-desc">Bu barkod veritabanında yok. Bilgileri girerek kütüphaneye ekleyin ve sayıma dahil edin.</div>
+    <div class="np-section-title">Temel Bilgiler</div>
+    <div class="np-field"><div class="np-label">Barkod / GTIN</div><input class="np-input" id="np-barcode" type="text" style="font-family:var(--mono);"></div>
+    <div class="np-field"><div class="np-label">Ürün Adı</div><input class="np-input" id="np-name" type="text" placeholder="Ürün adını girin"></div>
+    <div class="np-field">
+      <div class="np-label">Stok Adedi</div>
+      <div class="qty-row">
+        <button class="qty-btn" onclick="changeNpQty(-1)">−</button>
+        <input class="np-input" id="np-qty" type="number" value="1" min="1" style="text-align:center;font-family:var(--mono);font-size:17px;font-weight:600;">
+        <button class="qty-btn" onclick="changeNpQty(1)">+</button>
+      </div>
+    </div>
+    <hr class="np-divider">
+    <div class="np-section-title" style="color:var(--purple)">Medikal / Lot Bilgileri <span style="color:var(--text3);font-weight:400;">(opsiyonel)</span></div>
+    <div class="np-grid">
+      <div class="np-field"><div class="np-label" style="color:var(--purple)">Lot / Parti No</div><input class="np-input" id="np-lot" type="text" placeholder="—" style="font-family:var(--mono);"></div>
+      <div class="np-field"><div class="np-label" style="color:var(--info)">Seri No</div><input class="np-input" id="np-seri" type="text" placeholder="—" style="font-family:var(--mono);"></div>
+      <div class="np-field"><div class="np-label" style="color:var(--warn)">Son Kullanma Tarihi</div><input class="np-input" id="np-exp" type="text" placeholder="GG.AA.YYYY" style="font-family:var(--mono);"></div>
+      <div class="np-field"><div class="np-label">Üretim Tarihi</div><input class="np-input" id="np-prod" type="text" placeholder="GG.AA.YYYY" style="font-family:var(--mono);"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="closeNewProductModal()">İptal</button>
+      <button class="modal-btn confirm" onclick="confirmNewProduct()">Ekle ve Sayıma Dahil Et</button>
+    </div>
+  </div>
+</div>
+
+<!-- BİRLEŞTİRME MODALI -->
+<div class="modal-bg" id="merge-modal">
+  <div class="modal">
+    <div class="modal-icon">⚠️</div>
+    <div class="modal-title">Daha Önce Girildi!</div>
+    <div class="modal-desc" id="merge-desc"></div>
+    <div class="qty-row">
+      <button class="qty-btn" onclick="changeMergeQty(-1)">−</button>
+      <input class="merge-qty-input" id="merge-qty" type="number" value="1" min="1">
+      <button class="qty-btn" onclick="changeMergeQty(1)">+</button>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="closeMergeModal()">İptal</button>
+      <button class="modal-btn confirm" onclick="confirmMerge()">Ekle</button>
+    </div>
+  </div>
+</div>
+
+<!-- EXCEL IMPORT MODALI -->
+<div class="modal-bg" id="import-modal">
+  <div class="modal">
+    <div class="modal-icon">📊</div>
+    <div class="modal-title">Excel / CSV İçe Aktar</div>
+    <div class="format-hint">
+      Sütun sırası: <code>Barkod</code> | <code>Ürün Adı</code> | <code>Adet (ops.)</code><br>
+      Format: <code>.csv</code> veya <code>.xlsx</code> — İlk satır başlık ise otomatik atlanır.
+    </div>
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('import-file').click()">
+      <div class="drop-zone-icon">📂</div>
+      <div class="drop-zone-text">Dosyayı buraya sürükleyin veya tıklayın</div>
+      <div class="drop-zone-sub">.csv · .xlsx · .xls</div>
+    </div>
+    <input type="file" id="import-file" accept=".csv,.xlsx,.xls">
+    <div class="import-preview" id="import-preview"></div>
+    <div class="import-result" id="import-result"></div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="closeImportModal()">Kapat</button>
+      <button class="modal-btn confirm" id="import-confirm-btn" onclick="confirmImport()" disabled>İçe Aktar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- ZXing barkod kütüphanesi -->
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js"></script>
+
+<script>
+// ===== CİHAZ TESPİTİ =====
+const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+const deviceBadge = document.getElementById('device-badge');
+if (!isMobile) {
+  deviceBadge.textContent = '🖥 Bilgisayar';
+  deviceBadge.style.color = 'var(--info)';
+  deviceBadge.style.borderColor = 'rgba(96,165,250,.3)';
+}
+
+// ===== KAMERA =====
+let codeReader = null;
+let cameraActive = false;
+let lastScanTime = 0;
+
+// Kamera desteği varsa butonu göster
+if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+  document.getElementById('cam-btn').style.display = 'flex';
+}
+
+function toggleCamera() {
+  if (cameraActive) { stopCamera(); return; }
+  // HTTPS kontrolü
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    document.getElementById('https-warn').classList.add('show');
+    showToast('Kamera için HTTPS gerekli', 'warning');
+    return;
+  }
+  startCamera();
+}
+
+async function startCamera() {
+  try {
+    document.getElementById('camera-container').classList.add('open');
+    document.getElementById('cam-btn').classList.add('active');
+    document.getElementById('camera-status').textContent = 'Kamera başlatılıyor...';
+
+    if (typeof ZXing === 'undefined') {
+      throw new Error('Barkod kütüphanesi yüklenemedi. Sayfayı yenileyin.');
+    }
+
+    codeReader = new ZXing.BrowserMultiFormatReader();
+    const videoEl = document.getElementById('camera-video');
+
+    let deviceId = undefined;
+    try {
+      const devices = await ZXing.BrowserMultiFormatReader.listVideoInputDevices();
+      if (devices && devices.length > 0) {
+        const back = devices.find(d => /back|rear|environment/i.test(d.label));
+        deviceId = back ? back.deviceId : devices[devices.length > 1 ? devices.length - 1 : 0].deviceId;
+      }
+    } catch(de) { /* deviceId undefined kalır, tarayıcı seçer */ }
+
+    cameraActive = true;
+    document.getElementById('camera-status').textContent = 'Barkodu çerçeveye yaklaştırın...';
+
+    codeReader.decodeFromVideoDevice(deviceId, videoEl, (result, err) => {
+      if (result) {
+        const now = Date.now();
+        if (now - lastScanTime < 2000) return;
+        lastScanTime = now;
+        const raw = result.getText();
+        document.getElementById('camera-status').textContent = '✓ Okundu!';
+        if (navigator.vibrate) navigator.vibrate([100,50,100]);
+        stopCamera();
+        handleScan(raw);
+      }
+      if (err && err.name && err.name !== 'NotFoundException') {
+        console.warn('ZXing hata:', err.message);
+      }
+    });
+
+  } catch(e) {
+    stopCamera();
+    if (e.name === 'NotAllowedError') {
+      showToast('Kamera izni reddedildi — tarayıcı ayarlarından izin verin', 'warning');
+    } else if (e.name === 'NotFoundError') {
+      showToast('Kamera bulunamadı', 'warning');
+    } else {
+      showToast('Hata: ' + e.message, 'warning');
+    }
+  }
+}
+
+function stopCamera() {
+  if (codeReader) { codeReader.reset(); codeReader = null; }
+  cameraActive = false;
+  document.getElementById('camera-container').classList.remove('open');
+  document.getElementById('cam-btn').classList.remove('active');
+  document.getElementById('barkod-input').focus();
+}
+
+// ===== GS1 AYRIŞTIRICI =====
+const AI_FIXED={'00':18,'01':14,'02':14,'03':14,'11':6,'12':6,'13':6,'14':6,'15':6,'16':6,'17':6,'18':6,'19':6,'20':2};
+const GS='\x1D';
+const VAR_AIS=['10','21','22','240','241','250','251','253','254','255','30','37','390','391','392','393','400','401','402','403','410','411','412','413','414','415','416','417','420','421','422','423','424','425','426','427','710','711','712','713','714','715','90','91','92','93','94','95','96','97','98','99'];
+
+function parseGS1(raw){
+  let s=raw.replace(/^\]d2|^\]Q3|^\]C1/i,'');
+  if(/^\(/.test(s)) return parseParens(s);
+  const result={};
+  let i=0;
+  while(i<s.length){
+    let ai=null,len=null;
+    for(const tl of [4,3,2]){
+      const c=s.substr(i,tl);
+      if(AI_FIXED[c]!==undefined){ai=c;len=AI_FIXED[c];break;}
+      if(VAR_AIS.includes(c)){ai=c;len=null;break;}
+    }
+    if(!ai) break;
+    i+=ai.length;
+    if(len!==null){result[ai]=s.substr(i,len);i+=len;}
+    else{const g=s.indexOf(GS,i);result[ai]=g===-1?s.substr(i):s.substr(i,g-i);i=g===-1?s.length:g+1;}
+  }
+  return Object.keys(result).length>0?result:null;
+}
+function parseParens(s){
+  const result={};
+  const re=/\((\d{2,4})\)([^(]*)/g;let m;
+  while((m=re.exec(s))!==null)result[m[1]]=m[2].trim();
+  return Object.keys(result).length>0?result:null;
+}
+function fmtDate(d){
+  if(!d||d.length!==6)return d;
+  const yy=parseInt(d.substr(0,2)),mm=d.substr(2,2),dd=d.substr(4,2);
+  return `${dd}.${mm}.${yy<=49?2000+yy:1900+yy}`;
+}
+function gtin14(g){return g?g.replace(/^0+/,'')||g:'';}
+
+// ===== VERİ =====
+let products=JSON.parse(localStorage.getItem('stok_products')||'null');
+if(!products){
+  products={'8690637870040':'Ülker Çikolatalı Gofret','8690506400942':'Coca-Cola 330ml Kutu','8693515002019':'Pınar Süt 1L','8690529002009':'Ariel Toz Deterjan 3kg','8699242009036':'Knorr Domates Çorbası'};
+  saveProducts();
+}
+let sayimList=JSON.parse(localStorage.getItem('stok_sayim')||'[]');
+let currentScan=null;
+let pendingMerge=null;
+let pendingImportData=[];
+
+// ===== BAŞLANGIÇ =====
+document.getElementById('tarih-badge').textContent=new Date().toLocaleDateString('tr-TR',{day:'2-digit',month:'long',year:'numeric'});
+renderDB();renderTable();
+setTimeout(()=>document.getElementById('barkod-input').focus(),100);
+
+// ===== EVENTS =====
+document.getElementById('barkod-input').addEventListener('keydown',function(e){if(e.key==='Enter')handleScan(this.value.trim());});
+document.getElementById('qty-input').addEventListener('keydown',function(e){if(e.key==='Enter')addToList();});
+document.getElementById('merge-qty').addEventListener('keydown',function(e){if(e.key==='Enter')confirmMerge();});
+document.getElementById('np-name').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('np-qty').focus();});
+document.getElementById('np-qty').addEventListener('keydown',function(e){if(e.key==='Enter')confirmNewProduct();});
+document.getElementById('new-name').addEventListener('keydown',function(e){if(e.key==='Enter')addProduct();});
+['new-product-modal','merge-modal','import-modal'].forEach(id=>{
+  document.getElementById(id).addEventListener('click',function(e){if(e.target===this)this.classList.remove('show');});
+});
+
+// ===== TARAMA =====
+function handleScan(raw){
+  if(!raw)return;
+  document.getElementById('barkod-input').value='';
+  const gs1=parseGS1(raw);
+  let barcode,lot='',seri='',exp='',prod='',isMedikal=false;
+  if(gs1){
+    barcode=gtin14(gs1['01']||'')||raw;
+    lot=gs1['10']||'';seri=gs1['21']||'';
+    exp=gs1['17']?fmtDate(gs1['17']):'';
+    prod=gs1['11']?fmtDate(gs1['11']):'';
+    isMedikal=!!(lot||seri||exp||prod);
+  } else {
+    barcode=raw;
+  }
+  const name=products[barcode]||products[raw]||(gs1&&gs1['01']?products[gs1['01']]:null)||null;
+  if(!name){
+    document.getElementById('np-barcode').value=barcode;
+    document.getElementById('np-name').value='';
+    document.getElementById('np-qty').value=1;
+    document.getElementById('np-lot').value=lot;
+    document.getElementById('np-seri').value=seri;
+    document.getElementById('np-exp').value=exp;
+    document.getElementById('np-prod').value=prod;
+    document.getElementById('new-product-modal').classList.add('show');
+    setTimeout(()=>document.getElementById('np-name').focus(),120);
+    updateFields(null,barcode,lot,seri,exp,prod,isMedikal);
+    return;
+  }
+  currentScan={barcode,name,lot,seri,exp,prod,isMedikal};
+  updateFields(name,barcode,lot,seri,exp,prod,isMedikal);
+  document.getElementById('qty-input').value=1;
+  document.getElementById('qty-input').focus();
+  document.getElementById('qty-input').select();
+  document.getElementById('add-btn').disabled=false;
+}
+
+function updateFields(name,barcode,lot,seri,exp,prod,isMedikal){
+  const set=(id,val,em='—')=>{const e=document.getElementById(id);if(val){e.textContent=val;e.classList.remove('empty');}else{e.textContent=em;e.classList.add('empty');}};
+  set('pf-name',name,'? Tanınmayan ürün');
+  set('pf-barcode',barcode);
+  set('pf-lot',lot,'— (medikal değil veya yok)');
+  set('pf-seri',seri);set('pf-exp',exp);set('pf-prod',prod);
+  document.getElementById('pf-type').innerHTML=isMedikal
+    ?'<span class="type-badge medikal">GS1 Karekod (medikal)</span>'
+    :'<span class="type-badge normal">Standart barkod</span>';
+}
+
+// ===== LİSTEYE EKLE =====
+function addToList(){
+  if(!currentScan)return;
+  const qty=parseInt(document.getElementById('qty-input').value)||1;
+  const {barcode,name,lot,seri,exp,prod,isMedikal}=currentScan;
+  const existing=sayimList.find(i=>i.barcode===barcode&&((lot||i.lot)?i.lot===lot&&i.seri===seri:true));
+  if(existing){
+    pendingMerge={barcode,name,lot,seri,exp,prod,prevQty:existing.qty};
+    const li=lot?` <span style="color:var(--purple)">Lot: ${lot}</span>`:'';
+    document.getElementById('merge-desc').innerHTML=`<strong style="color:var(--text)">${name}</strong>${li}<br>Bu kayıt daha önce <strong style="color:var(--warn)">${existing.qty} adet</strong> olarak girildi.<br>Kaç adet daha eklemek istiyorsunuz?`;
+    document.getElementById('merge-qty').value=qty;
+    document.getElementById('merge-modal').classList.add('show');
+    setTimeout(()=>document.getElementById('merge-qty').focus(),100);
+  } else {
+    sayimList.push({barcode,name,lot,seri,exp,prod,isMedikal,qty});
+    saveSayim();renderTable();
+    showToast(`✓ ${name}${lot?' · Lot: '+lot:''} — ${qty} adet`,'success');
+    resetInput();
+  }
+}
+function confirmMerge(){
+  const addQty=parseInt(document.getElementById('merge-qty').value)||1;
+  const pm=pendingMerge;
+  const item=sayimList.find(i=>i.barcode===pm.barcode&&i.lot===pm.lot&&i.seri===pm.seri);
+  if(item){item.qty+=addQty;saveSayim();renderTable();showToast(`✓ ${item.name} — toplam ${item.qty} adet`,'success');}
+  closeMergeModal();resetInput();
+}
+function closeMergeModal(){document.getElementById('merge-modal').classList.remove('show');pendingMerge=null;}
+
+function resetInput(){
+  currentScan=null;
+  updateFields(null,'','','','','',false);
+  document.getElementById('pf-name').textContent='—';document.getElementById('pf-name').classList.add('empty');
+  document.getElementById('pf-type').innerHTML='<span class="type-badge normal">Standart barkod</span>';
+  document.getElementById('qty-input').value=1;
+  document.getElementById('add-btn').disabled=true;
+  document.getElementById('barkod-input').value='';
+  document.getElementById('barkod-input').focus();
+}
+
+// ===== YENİ ÜRÜN MODALI =====
+function confirmNewProduct(){
+  const barcode=document.getElementById('np-barcode').value.trim();
+  const name=document.getElementById('np-name').value.trim();
+  const qty=parseInt(document.getElementById('np-qty').value)||1;
+  const lot=document.getElementById('np-lot').value.trim();
+  const seri=document.getElementById('np-seri').value.trim();
+  const exp=document.getElementById('np-exp').value.trim();
+  const prod=document.getElementById('np-prod').value.trim();
+  const isMedikal=!!(lot||seri||exp||prod);
+  if(!barcode||!name){showToast('Barkod ve ürün adı zorunlu','warning');return;}
+  products[barcode]=name;saveProducts();renderDB();
+  const existing=sayimList.find(i=>i.barcode===barcode&&i.lot===lot&&i.seri===seri);
+  if(existing){existing.qty+=qty;showToast(`✓ Mevcut satıra eklendi: toplam ${existing.qty} adet`,'success');}
+  else{sayimList.push({barcode,name,lot,seri,exp,prod,isMedikal,qty});showToast(`✓ ${name}${lot?' · Lot: '+lot:''} — ${qty} adet`,'success');}
+  saveSayim();renderTable();
+  closeNewProductModal();
+  document.getElementById('barkod-input').focus();
+}
+function closeNewProductModal(){document.getElementById('new-product-modal').classList.remove('show');}
+
+// ===== VERİTABANI =====
+function addProduct(){
+  const barcode=document.getElementById('new-barcode').value.trim();
+  const name=document.getElementById('new-name').value.trim();
+  if(!barcode||!name){showToast('Barkod ve ürün adı zorunlu','warning');return;}
+  if(products[barcode]){showToast('Zaten kayıtlı: '+products[barcode],'warning');return;}
+  products[barcode]=name;saveProducts();renderDB();
+  document.getElementById('new-barcode').value='';document.getElementById('new-name').value='';
+  showToast('✓ Ürün eklendi: '+name,'success');
+  document.getElementById('new-barcode').focus();
+}
+function delProduct(b){if(!confirm(`"${products[b]}" silinsin mi?`))return;delete products[b];saveProducts();renderDB();}
+function renderDB(){
+  const list=document.getElementById('db-list');
+  const keys=Object.keys(products);
+  if(!keys.length){list.innerHTML='<div class="db-empty">Ürün veritabanı boş<br><span style="font-size:11px;">Excel ile toplu aktarın</span></div>';return;}
+  list.innerHTML=keys.map(b=>`<div class="db-item"><div><div class="db-item-name">${products[b]}</div><div class="db-item-barcode">${b}</div></div><button class="db-item-del" onclick="delProduct('${b}')">✕</button></div>`).join('');
+}
+function exportDB(){
+  const keys=Object.keys(products);
+  if(!keys.length){showToast('Veritabanı boş','warning');return;}
+  dl([['Barkod','Ürün Adı'],...keys.map(b=>[b,products[b]])].map(r=>r.join(';')).join('\n'),`urun_veritabani_${now()}.csv`);
+  showToast('✓ Dışa aktarıldı','success');
+}
+
+// ===== EXCEL IMPORT =====
+function openImportModal(){
+  pendingImportData=[];
+  document.getElementById('import-preview').style.display='none';
+  document.getElementById('import-preview').innerHTML='';
+  document.getElementById('import-result').textContent='';
+  document.getElementById('import-confirm-btn').disabled=true;
+  document.getElementById('import-file').value='';
+  document.getElementById('import-modal').classList.add('show');
+}
+function closeImportModal(){document.getElementById('import-modal').classList.remove('show');}
+const dropZone=document.getElementById('drop-zone');
+const fileInput=document.getElementById('import-file');
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('drag');});
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('drag');if(e.dataTransfer.files[0])processImportFile(e.dataTransfer.files[0]);});
+fileInput.addEventListener('change',function(){if(this.files[0])processImportFile(this.files[0]);});
+function processImportFile(file){
+  const ext=file.name.split('.').pop().toLowerCase();
+  const reader=new FileReader();
+  reader.onload=function(e){
+    let rows=[];
+    try{
+      if(ext==='csv'){rows=e.target.result.split(/\r?\n/).filter(l=>l.trim()).map(l=>l.split(/[;,\t]/));}
+      else{const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});}
+    }catch{showToast('Dosya okunamadı','warning');return;}
+    let start=0;
+    if(rows.length>0){const fc=String(rows[0][0]).trim();if(isNaN(fc)||fc.length<4)start=1;}
+    pendingImportData=[];
+    for(let i=start;i<rows.length;i++){
+      const r=rows[i];const barcode=String(r[0]||'').trim();const name=String(r[1]||'').trim();
+      if(!barcode||!name)continue;pendingImportData.push({barcode,name});
+    }
+    if(!pendingImportData.length){document.getElementById('import-result').textContent='Geçerli satır bulunamadı.';document.getElementById('import-confirm-btn').disabled=true;return;}
+    const preview=document.getElementById('import-preview');
+    preview.style.display='block';
+    preview.innerHTML=pendingImportData.slice(0,8).map(d=>`<div class="import-preview-row">${d.barcode} — ${d.name}</div>`).join('')+(pendingImportData.length>8?`<div class="import-preview-row" style="color:var(--text3)">...ve ${pendingImportData.length-8} ürün daha</div>`:'');
+    document.getElementById('import-result').textContent=`${pendingImportData.length} ürün okundu.`;
+    document.getElementById('import-confirm-btn').disabled=false;
+  };
+  if(ext==='csv')reader.readAsText(file,'UTF-8');else reader.readAsArrayBuffer(file);
+}
+function confirmImport(){
+  if(!pendingImportData.length)return;
+  let added=0,skipped=0;
+  pendingImportData.forEach(({barcode,name})=>{if(products[barcode]){skipped++;return;}products[barcode]=name;added++;});
+  saveProducts();renderDB();
+  document.getElementById('import-result').textContent=`✓ ${added} eklendi${skipped?`, ${skipped} zaten mevcuttu`:''}`;
+  document.getElementById('import-confirm-btn').disabled=true;
+  showToast(`✓ ${added} ürün içe aktarıldı`,'success');
+  pendingImportData=[];
+}
+
+// ===== TABLO =====
+function renderTable(){
+  const tbody=document.getElementById('sayim-tbody');
+  const empty=document.getElementById('table-empty');
+  if(!sayimList.length){tbody.innerHTML='';empty.style.display='flex';}
+  else{
+    empty.style.display='none';
+    tbody.innerHTML=sayimList.map((item,i)=>`
+      <tr class="${i===sayimList.length-1?'new-row':''}">
+        <td class="td-index">${String(i+1).padStart(2,'0')}</td>
+        <td class="td-name">${item.isMedikal?'<span class="medikal-dot"></span>':''}<span title="${item.name}">${item.name.length>28?item.name.slice(0,28)+'…':item.name}</span></td>
+        <td class="td-barcode">${item.barcode}</td>
+        <td class="td-lot">${item.lot||'<span class="td-empty">—</span>'}</td>
+        <td class="td-seri">${item.seri||'<span class="td-empty">—</span>'}</td>
+        <td class="td-exp">${item.exp||'<span class="td-empty">—</span>'}</td>
+        <td class="td-qty">${item.qty}</td>
+        <td class="td-action"><button class="row-del" onclick="delRow(${i})">✕</button></td>
+      </tr>`).join('');
+  }
+  document.getElementById('sum-kalem').textContent=sayimList.length;
+  document.getElementById('sum-adet').textContent=sayimList.reduce((s,i)=>s+i.qty,0);
+}
+function delRow(idx){sayimList.splice(idx,1);saveSayim();renderTable();}
+function clearList(){if(!confirm('Tüm sayım listesi silinsin mi?'))return;sayimList=[];saveSayim();renderTable();}
+
+// ===== CSV EXPORT =====
+function exportCSV(){
+  if(!sayimList.length){showToast('Liste boş','warning');return;}
+  const rows=[['Sıra','Ürün Adı','Barkod / GTIN','Lot / Parti No','Seri No','SKT','Üretim Tarihi','Adet'],...sayimList.map((i,idx)=>[idx+1,i.name,i.barcode,i.lot||'',i.seri||'',i.exp||'',i.prod||'',i.qty])];
+  dl(rows.map(r=>r.join(';')).join('\n'),`stok_sayim_${now()}.csv`);
+  showToast('✓ CSV indirildi','success');
+}
+
+// ===== YARDIMCI =====
+function changeQty(d){const e=document.getElementById('qty-input');e.value=Math.max(1,(parseInt(e.value)||1)+d);}
+function changeMergeQty(d){const e=document.getElementById('merge-qty');e.value=Math.max(1,(parseInt(e.value)||1)+d);}
+function changeNpQty(d){const e=document.getElementById('np-qty');e.value=Math.max(1,(parseInt(e.value)||1)+d);}
+function showToast(msg,type='success'){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+type;clearTimeout(t._tid);t._tid=setTimeout(()=>t.className='toast',3200);}
+function saveProducts(){localStorage.setItem('stok_products',JSON.stringify(products));}
+function saveSayim(){localStorage.setItem('stok_sayim',JSON.stringify(sayimList));}
+function now(){return new Date().toISOString().slice(0,10);}
+function dl(csv,fname){const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();}
+</script>
+</body>
+</html>
